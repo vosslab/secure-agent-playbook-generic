@@ -46,13 +46,12 @@ class Bundle:
 
 @dataclass(frozen=True)
 class InstalledForm:
-    """Destination-relative files and a transformed root skill document."""
+    """Complete destination files, including all locally cited datasets."""
 
     skill: SkillRecord
     files: dict[PurePosixPath, bytes]
     text: str
     bundle: Bundle
-    with_data: bool
 
     @property
     def data_file_count(self) -> int:
@@ -207,7 +206,9 @@ def derive_bundle(skill: SkillRecord) -> Bundle:
                 pending.append(resolved)
             if resolved.is_dir() and not _is_dataset(resolved, skill.plugin):
                 pending.extend(path for path in resolved.rglob("*.md"))
-    data_paths = sorted(path for path in support if _is_plugin_data(path, skill.plugin))
+    # Datasets are executable skill context, not optional documentation. Hash
+    # plugin-local and repository-level citations as part of the same closure.
+    data_paths = sorted(path for path in support if _is_dataset(path, skill.plugin))
     hashes = {
         _reference_destination(file_path, skill.plugin).as_posix(): sha256_file(file_path)
         for data_path in data_paths for file_path in _iter_files(data_path)
@@ -229,20 +230,10 @@ def _destination_for_reference(reference: ResourceReference, plugin: PluginMeta)
     return _reference_destination(target, plugin).as_posix() + "/"
 
 
-def _data_note(plugin: PluginMeta, source: Path) -> str:
-    if _is_research_data(source, plugin):
-        location = "data/ (repository research bundle)"
-    else:
-        location = f"plugins/{plugin.name}/data/"
-    return f"Dataset omitted from this standalone install; use --with-data where available (source: {location})"
-
-
-def installed_form(skill: SkillRecord, with_data: bool = False) -> InstalledForm:
-    """Produce the exact destination files for a standalone install, without writes."""
+def installed_form(skill: SkillRecord) -> InstalledForm:
+    """Produce a complete standalone skill; cited datasets have no opt-out."""
     bundle = derive_bundle(skill)
     files: dict[PurePosixPath, bytes] = {}
-    plugin_data_paths = {path for path in bundle.support_paths if _is_plugin_data(path, skill.plugin)}
-    research_data_paths = {path for path in bundle.support_paths if _is_research_data(path, skill.plugin)}
 
     # Copy each cited support tree once. Markdown support documents receive the
     # same reference rewrite as the entrypoint, preserving their own closure.
@@ -255,10 +246,7 @@ def installed_form(skill: SkillRecord, with_data: bool = False) -> InstalledForm
         text = source.read_text(encoding="utf-8")
         references = scan_references(source, skill.plugin)
         for reference in references:
-            if _is_dataset(reference.resolved_path, skill.plugin) if reference.resolved_path else False:
-                replacement = _destination_for_reference(reference, skill.plugin) if with_data and _is_plugin_data(reference.resolved_path, skill.plugin) else _data_note(skill.plugin, reference.resolved_path)
-            else:
-                replacement = _destination_for_reference(reference, skill.plugin)
+            replacement = _destination_for_reference(reference, skill.plugin)
             if replacement:
                 text = text.replace(reference.raw, replacement)
         document_text[source] = text
@@ -269,13 +257,11 @@ def installed_form(skill: SkillRecord, with_data: bool = False) -> InstalledForm
             continue
         files[_reference_destination(source, skill.plugin)] = text.encode("utf-8")
     for source in bundle.support_paths:
-        if source in research_data_paths or (source in plugin_data_paths and not with_data):
-            continue
         for file_path in _iter_files(source):
             destination = _reference_destination(file_path, skill.plugin)
             if destination not in files:
                 files[destination] = file_path.read_bytes()
-    form = InstalledForm(skill, files, document_text[skill.path], bundle, with_data)
+    form = InstalledForm(skill, files, document_text[skill.path], bundle)
     verify_installed_form(form)
     return form
 
@@ -293,9 +279,9 @@ def verify_installed_form(form: InstalledForm) -> None:
                 raise ResourceResolutionError(f"Installed {destination} references absent resource {raw}")
 
 
-def materialize_skill(skill: SkillRecord, destination: Path, with_data: bool = False) -> InstalledForm:
+def materialize_skill(skill: SkillRecord, destination: Path) -> InstalledForm:
     """Write one already-derived standalone tree. The installer controls atomicity."""
-    form = installed_form(skill, with_data=with_data)
+    form = installed_form(skill)
     for relative, content in form.files.items():
         path = destination / relative
         path.parent.mkdir(parents=True, exist_ok=True)

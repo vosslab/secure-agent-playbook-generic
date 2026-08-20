@@ -2,6 +2,8 @@
 
 Claude Code and Codex CLI are the primary paths. OpenCode receives a
 best-effort compatibility installation through the same installer.
+The installer design and maintenance invariants are specified in the
+[Fork Contract](FORK_CONTRACT.md).
 
 ## Claude marketplace
 
@@ -13,22 +15,25 @@ best-effort compatibility installation through the same installer.
 
 ## Installer
 
-Run once to choose targets, scope, skills/agents, and dataset policy:
+Run once to choose targets, scope, and skills/agents:
 
 ```sh
-python3 tools/install_skills.py
+./install.py
 ```
 
-The saved profile at `~/.config/agent-security-playbook/profile.json` supports
-repeatable, prompt-free runs:
+The saved profile at `~/.config/agent-security-playbook/profile.json` makes a
+bare rerun install repository updates without repeating the interview:
 
 ```sh
-python3 tools/install_skills.py --yes
-python3 tools/install_skills.py --yes --with-data
-python3 tools/install_skills.py --yes --status
-python3 tools/install_skills.py --yes --update
-python3 tools/install_skills.py --yes --uninstall
+./install.py
+./install.py --status
+./install.py --dry-run
+./install.py --uninstall
 ```
+
+A no-argument rerun installs repository updates, removes obsolete unmodified
+managed files, and preserves locally modified managed files. Pass `--force`
+only when those local changes should be replaced deliberately.
 
 For Codex, the installer first creates a complete package in its target-owned
 package directory, copies each canonical plugin, generates
@@ -44,7 +49,6 @@ Standalone skills use the following locations:
 | Codex CLI | `~/.agents/skills` | `.agents/skills` | `.codex/agents/*.toml` |
 | OpenCode compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.opencode/agent/*.md` |
 
-`--with-data` materializes each cited plugin dataset below the installed
-skill's `references/data/` directory. Normal installs retain a source-location
-note instead. The installer protects locally modified managed files and uses
-`--force` for deliberate replacement.
+Every standalone skill installation materializes the datasets it cites below
+its `references/data/` directory. The installer protects locally modified
+managed files and uses `--force` for deliberate replacement.

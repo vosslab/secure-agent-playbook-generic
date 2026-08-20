@@ -1,12 +1,20 @@
-# Secure Agent Playbook
+# Secure Agent Playbook — Generic Harness Fork
 
-An open-source security playbook for AI agents. Structured, OWASP-grounded procedures that enable agents to perform security engineering tasks — from code review to AI agent security audits.
+An installation-focused security playbook fork for developers and security reviewers, delivering complete skills, agents, plays, and cited datasets to Claude Code, Codex, and OpenCode through one safe installer.
+
+> **Fork notice:** This is the multi-harness
+> [`vosslab/secure-agent-playbook-generic`](https://github.com/vosslab/secure-agent-playbook-generic)
+> fork, not the canonical
+> [`OWASP/secure-agent-playbook`](https://github.com/OWASP/secure-agent-playbook).
+> It keeps the upstream security corpus recognizable and concentrates fork
+> behavior in the portability layer described by the
+> [Fork Contract](docs/FORK_CONTRACT.md).
 
 ## Table of Contents
 
-- [Why Use This?](#why-use-this)
-- [What This Is](#what-this-is)
+- [One Corpus, Native to Each Harness](#one-corpus-native-to-each-harness)
 - [Quick Start](#quick-start)
+- [Documentation](#documentation)
 - [Skills Catalog](#skills-catalog)
 - [Agents](#agents)
 - [Example Output](#example-output)
@@ -15,76 +23,31 @@ An open-source security playbook for AI agents. Structured, OWASP-grounded proce
 - [OWASP Foundation](#owasp-foundation)
 - [Related Projects](#related-projects)
 - [Contributing](#contributing)
+- [License](#license)
 
-## Why Use This?
+## One Corpus, Native to Each Harness
 
-Without a playbook, asking an AI agent to "review my code for security" gives you a surface-level checklist. With these plays, the agent follows a structured OWASP-grounded procedure — systematically testing every vulnerability class, producing findings with CWE mappings, OpenCRE cross-references, evidence snippets, and specific remediation code.
+One canonical security corpus is installed where each supported agent already
+looks. The fork adapts paths, manifests, and agent formats without maintaining
+divergent copies of the OWASP-grounded skills and plays.
 
-- **Consistent methodology** — Every assessment follows a documented procedure, not ad-hoc prompting. Results are reproducible across runs and reviewers.
-- **Structured, actionable output** — Findings include severity, CWE, evidence, and remediation steps with code examples. No vague warnings.
-- **Cross-standard traceability** — Findings link to CWE, ASVS, WSTG, and NIST 800-53 via [OpenCRE](https://www.opencre.org) for compliance mapping.
-- **17 security skills** — From dependency CVE scanning to prompt injection testing to multi-agent threat modeling. Install as a Claude Code plugin or use standalone.
-- **Works beyond Claude Code** — Skills are Claude Code plugins; plays are standalone procedures any AI agent can follow.
+- **Complete by construction** — Every standalone skill includes its referenced
+  play, templates, and all cited plugin or repository datasets. There is no
+  reduced installation mode.
+- **Harness-native delivery** — Claude Code and Codex are primary targets;
+  OpenCode is an explicit best-effort compatibility surface.
+- **Safe lifecycle management** — A saved profile makes reruns automatic,
+  manifest ownership limits what can change, and local modifications survive
+  unless `--force` is supplied for that run.
+- **Actionable security output** — The 17 skills and 6 agents produce findings
+  with severity, CWE, evidence, remediation, and OWASP/OpenCRE traceability.
+- **Upstream-shaped content** — The fork changes distribution behavior while
+  keeping canonical plugins, skills, plays, templates, agents, and datasets in
+  their familiar layout.
 
-## What This Is
-
-This is not a framework or a library. There is no code to import.
-
-Each **play** is a step-by-step security procedure with checklists, decision criteria, and output templates. An AI agent follows the procedure to produce consistent, evidence-based findings. Think of it like a SOC analyst's playbook — but written for AI agents to execute.
-
-## Quick Start
-
-**With Claude Code (recommended):**
-
-**Step 1** — Register the plugin marketplace:
-```
-/plugin marketplace add OWASP/secure-agent-playbook
-```
-
-**Step 2** — Install a skill set:
-```
-/plugin install code-security-skills@agent-security-playbook
-/plugin install ai-security-skills@agent-security-playbook
-```
-
-**Step 3** — Use the skills by mentioning the task in conversation:
-
-```
-"Review this code for security issues"
-"Scan my dependencies for CVEs"
-"Audit this MCP server configuration"
-"Test this chatbot for prompt injection"
-```
-
-Claude will automatically activate the relevant skill based on context. See [Skills Catalog](#skills-catalog) for all available skills and [Example Output](#example-output) for what the results look like.
-
-**Organization plugin** — For Claude organization admins installing via [Organization Plugins](https://claude.ai/admin-settings/plugins):
-
-1. Go to the [latest release](https://github.com/OWASP/secure-agent-playbook/releases/latest)
-2. Download `secure-agent-playbook.zip` from the release assets
-3. Upload the zip at **Organization settings > Plugins > Add plugin**
-
-> **Note:** Do not use GitHub's "Download ZIP" button — it nests files in a subdirectory that the plugin validator rejects. Always use the release asset zip.
-
-**Local development** — To test from a local clone instead of GitHub:
-```
-/plugin marketplace add /path/to/agent-security-playbook
-/plugin install code-security-skills@agent-security-playbook
-/plugin install ai-security-skills@agent-security-playbook
-```
-
-**Without Claude Code:**
-
-Reference plays directly as procedures for any AI agent or manual use:
-- Point your agent at a play: *"Follow the procedure in `plugins/ai-security-skills/plays/agent-security-audit.md`"*
-- Or use the plays as checklists for manual security reviews
-
-**Codex, OpenCode, and standalone installs:** The installer builds Codex plugin
-manifests and complete target-owned packages from canonical plugins. For a
-guided standalone install to Codex or the OpenCode compatibility surface, run
-`python3 tools/install_skills.py`. The installer saves its first-run choices
-and replays them with `--yes`. Use `--with-data` to materialize cited plugin
-datasets; `--status`, `--update`, and `--uninstall` manage a saved install.
+This remains a playbook rather than a framework or library. Agents follow its
+procedures to perform code, dependency, infrastructure, mobile, LLM, MCP, and
+multi-agent security work using consistent methodology.
 
 <!-- harness-support:start -->
 | Harness | Support | User skills | Project skills | Agents |
@@ -93,6 +56,44 @@ datasets; `--status`, `--update`, and `--uninstall` manage a saved install.
 | Codex CLI | Primary | `~/.agents/skills` | `.agents/skills` | `.codex/agents` |
 | OpenCode (compatibility) | Best-effort compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.config/opencode/agent` |
 <!-- harness-support:end -->
+
+## Quick Start
+
+The generic installer requires a local checkout, Python 3.10 or newer, and
+PyYAML 6 or newer. Install the declared Python dependency, then run the single
+public entrypoint:
+
+```sh
+git clone https://github.com/vosslab/secure-agent-playbook-generic.git
+cd secure-agent-playbook-generic
+python3 -m pip install -r scripts/requirements.txt
+./install.py
+```
+
+Choose the target harnesses, scope, and components when prompted. A successful
+install reports the managed components as `current`; then ask the selected
+harness for a real result:
+
+```text
+Review src/auth/ for security issues.
+```
+
+See [Installation](docs/INSTALL.md) for destinations, updates, status,
+uninstalling, Claude marketplace alternatives, and organization deployment.
+Without installing, any agent can follow a play directly from `plugins/*/plays/`.
+
+## Documentation
+
+- [`docs/INSTALL.md`](docs/INSTALL.md) — installer prompts, destinations, and
+  lifecycle operations.
+- [`docs/FORK_CONTRACT.md`](docs/FORK_CONTRACT.md) — compatibility boundaries,
+  minimalist CLI policy, mandatory datasets, and upstream-sync rules.
+- [`docs/SKILLS_INDEX.md`](docs/SKILLS_INDEX.md) — generated index of every
+  discovered skill and its activation guidance.
+- [`examples/README.md`](examples/README.md) — representative reports and
+  deliberately vulnerable review fixtures.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — upstream-shaped play, skill, agent, and
+  reference-data contribution guidance.
 
 ## Skills Catalog
 
@@ -229,7 +230,9 @@ Three-layer design — every layer lives inside the plugin source folder so the 
 - **`plugins/<name>/plays/`** — Full reference procedures with detailed checklists, tables, decision criteria, and examples. Skills reference these for comprehensive coverage.
 - **`plugins/<name>/templates/`** and **`plugins/<name>/data/`** — Output templates (`finding.md`, `report.md`) and OWASP reference datasets (FIASSE v1.0.4, ASVS v5.0, secure-code prompts) that skills load at runtime.
 
-Agents orchestrate, skills execute, plays provide the full procedure. Contributors edit plays. This means the playbook works with any AI agent (just point it at a play), while Claude Code users get plugin-based installation with agents and skills.
+Agents orchestrate, skills execute, and plays provide the full procedure. The
+generic installer adapts that same authored source to each harness without
+creating a second canonical content tree.
 
 ## OWASP Foundation
 
@@ -251,6 +254,7 @@ All plays reference OWASP standards and datasets:
 
 | Project | Relationship |
 |---------|-------------|
+| [OWASP Secure Agent Playbook](https://github.com/OWASP/secure-agent-playbook) | Canonical upstream for the security corpus. This fork adds generic harness installation and lifecycle behavior while keeping upstream content recognizable. |
 | [OWASP Agent Skills Project](https://github.com/eoftedal/owasp-agent-skills-project) | Proactive ASVS 5.0 guidance for AI coding agents — helps agents **write** secure code. We use their ASVS reference data in `plugins/code-security-skills/data/asvs/`. Complementary: they guide code generation, we find vulnerabilities in existing code. |
 | [Securability Engineering](https://github.com/Securability-Engineering) | Securable code generation (OWASP FIASSE) and secure code requirements (ASVS) via spec file analysis and generation constraint (benchmarked and tuned) for various AI code generation tools. |
 | [Arcanum PI Taxonomy](https://github.com/Arcanum-Sec/arc_pi_taxonomy) | Prompt injection attack classification by Jason Haddix. Our `prompt-injection-testing` play is built on this taxonomy. CC BY 4.0. |
@@ -259,8 +263,12 @@ All plays reference OWASP standards and datasets:
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+Portability-layer changes must also follow the
+[Fork Contract](docs/FORK_CONTRACT.md); canonical security-content changes are
+best proposed to the upstream project first.
 
 New plays should:
+
 - Solve one well-defined security task
 - Include clear trigger conditions (when should this play run?)
 - Follow a structured procedure with checkpoints

@@ -11,7 +11,7 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import tempfile
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Sequence
 
 from build_plugin_manifest import codex_manifest, marketplace, opencode_config
 from convert_agents import agent_filename, to_codex_toml, to_opencode_md
@@ -33,11 +33,11 @@ class ManagedContentModified(RuntimeError):
 
 @dataclass(frozen=True)
 class InstallProfile:
+    """Stable first-run choices only; never add per-run or resource toggles."""
+
     targets: tuple[str, ...]
     scope: str
     components: tuple[str, ...]
-    with_data: bool
-    overwrite: str
     schema_version: int = SCHEMA_VERSION
 
 
@@ -69,27 +69,28 @@ def _read_json(path: Path, fallback: dict[str, Any] | None = None) -> dict[str, 
     return parsed
 
 
-def profile_path(home: Path, name: str = "default") -> Path:
-    if name == "default":
-        return home / PROFILE_RELATIVE
-    return home / ".config/agent-security-playbook/profiles" / f"{name}.json"
+def profile_path(home: Path) -> Path:
+    """Return the single saved profile; named profiles are intentionally unsupported."""
+    return home / PROFILE_RELATIVE
 
 
-def load_profile(home: Path, name: str = "default") -> InstallProfile | None:
-    path = profile_path(home, name)
+def load_profile(home: Path) -> InstallProfile | None:
+    path = profile_path(home)
     if not path.is_file():
         return None
     data = _read_json(path)
     if data.get("schema_version") != SCHEMA_VERSION:
         raise ValueError(f"Unsupported profile schema in {path}")
+    # Read only current stable choices. Extra keys from older fork revisions,
+    # including with_data and overwrite, remain harmless and are not preserved.
     return InstallProfile(
         tuple(data["targets"]), data["scope"], tuple(data["components"]),
-        bool(data.get("with_data")), str(data.get("overwrite", "ask")), SCHEMA_VERSION,
+        SCHEMA_VERSION,
     )
 
 
-def save_profile(home: Path, profile: InstallProfile, name: str = "default") -> Path:
-    path = profile_path(home, name)
+def save_profile(home: Path, profile: InstallProfile) -> Path:
+    path = profile_path(home)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asdict(profile), indent=2) + "\n", encoding="utf-8")
     return path
@@ -116,9 +117,11 @@ def _choice(prompt: str, choices: Iterable[str], default: str) -> str:
 
 
 def interview(home: Path) -> InstallProfile:
-    """Collect an explicit first-run profile; saved runs use --yes thereafter."""
+    """Collect the first-run profile; later runs load it automatically."""
     detected = detect_harnesses(home)
     print("Detected harness roots:", ", ".join(name for name, present in detected.items() if present) or "none")
+    # Ask only about durable installation topology. Per-run behavior belongs in
+    # the small CLI, while required content such as cited datasets is automatic.
     selected = input("Targets (comma-separated claude,codex,opencode) [claude,codex]: ").strip() or "claude,codex"
     targets = tuple(dict.fromkeys(item.strip() for item in selected.split(",") if item.strip()))
     if not targets or any(target not in HARNESS_BY_ID for target in targets):
@@ -128,9 +131,7 @@ def interview(home: Path) -> InstallProfile:
     components = tuple(dict.fromkeys(item.strip() for item in selected_components.split(",") if item.strip()))
     if not components or any(component not in {"skills", "agents"} for component in components):
         raise ValueError("Components must be skills and/or agents")
-    data_choice = _choice("Include cited datasets (yes/no)", ("yes", "no"), "no")
-    overwrite = _choice("Replace locally modified managed content (ask/force)", ("ask", "force"), "ask")
-    profile = InstallProfile(targets, scope, components, data_choice == "yes", overwrite)
+    profile = InstallProfile(targets, scope, components)
     print("Planned profile:", json.dumps(asdict(profile), sort_keys=True))
     if _choice("Save and install now (yes/no)", ("yes", "no"), "yes") != "yes":
         raise RuntimeError("Installation cancelled")
@@ -149,12 +150,14 @@ def _agent_content(agent: Any, harness: HarnessSpec) -> tuple[PurePosixPath, byt
     return None
 
 
-def _desired_components(repo_root: Path, harness: HarnessSpec, components: tuple[str, ...], with_data: bool) -> dict[str, dict[PurePosixPath, bytes]]:
+def _desired_components(repo_root: Path, harness: HarnessSpec, components: tuple[str, ...]) -> dict[str, dict[PurePosixPath, bytes]]:
     found = inventory(repo_root)
     desired: dict[str, dict[PurePosixPath, bytes]] = {}
     if "skills" in components:
         for skill in found.skills:
-            form: InstalledForm = installed_form(skill, with_data=with_data)
+            # A usable skill is the entrypoint plus its complete local closure,
+            # including every cited dataset. There is deliberately no thin mode.
+            form: InstalledForm = installed_form(skill)
             desired[_component_key("skill", skill.name)] = {
                 PurePosixPath(skill.name) / relative: content for relative, content in form.files.items()
             }
@@ -387,23 +390,22 @@ def install(
     if "codex" in profile.targets:
         package_root = _package_root(profile.scope, home=home, project_root=project_root)
         package_desired = _codex_package_components(repo_root)
-        report["codex:package"] = _install_root(package_root, package_desired, get_harness("codex"), force=force or profile.overwrite == "force", dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
+        report["codex:package"] = _install_root(package_root, package_desired, get_harness("codex"), force=force, dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
     for target in profile.targets:
         harness = get_harness(target)
         if "skills" in profile.components:
             root = resolve_destination(harness, profile.scope, home=home, project_root=project_root, kind="skills")
-            desired = _desired_components(repo_root, harness, ("skills",), profile.with_data)
-            report[f"{target}:skills"] = _install_root(root, desired, harness, force=force or profile.overwrite == "force", dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
-            if profile.with_data:
-                count = sum(installed_form(skill, with_data=True).data_file_count for skill in found.skills)
-                print(f"{target}: planned resource files including datasets: {count}")
+            desired = _desired_components(repo_root, harness, ("skills",))
+            report[f"{target}:skills"] = _install_root(root, desired, harness, force=force, dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
+            count = sum(installed_form(skill).data_file_count for skill in found.skills)
+            print(f"{target}: cited dataset resource files: {count}")
         if "agents" in profile.components and harness.user_agent_root is not None:
             root = resolve_destination(harness, profile.scope, home=home, project_root=project_root, kind="agents")
-            desired = _desired_components(repo_root, harness, ("agents",), profile.with_data)
-            report[f"{target}:agents"] = _install_root(root, desired, harness, force=force or profile.overwrite == "force", dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
+            desired = _desired_components(repo_root, harness, ("agents",))
+            report[f"{target}:agents"] = _install_root(root, desired, harness, force=force, dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
         if target == "opencode":
             config_root = (home / ".config/opencode") if profile.scope == "user" else project_root
-            report["opencode:config"] = _install_root(config_root, _opencode_config_component(config_root), harness, force=force or profile.overwrite == "force", dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
+            report["opencode:config"] = _install_root(config_root, _opencode_config_component(config_root), harness, force=force, dry_run=dry_run, repo_version=version, skip_modified=update, prune=prune)
     # OpenCode discovers the Codex-shaped user tree as a compatibility source.
     # Record that shared consumer when both primary installations are selected.
     if profile.scope == "user" and "skills" in profile.components and {"codex", "opencode"}.issubset(profile.targets) and not dry_run:
@@ -425,10 +427,10 @@ def status(
         harness = get_harness(target)
         if "skills" in profile.components:
             root = resolve_destination(harness, profile.scope, home=home, project_root=project_root, kind="skills")
-            report[f"{target}:skills"] = status_target(root, _desired_components(repo_root, harness, ("skills",), profile.with_data))
+            report[f"{target}:skills"] = status_target(root, _desired_components(repo_root, harness, ("skills",)))
         if "agents" in profile.components and harness.user_agent_root is not None:
             root = resolve_destination(harness, profile.scope, home=home, project_root=project_root, kind="agents")
-            report[f"{target}:agents"] = status_target(root, _desired_components(repo_root, harness, ("agents",), profile.with_data))
+            report[f"{target}:agents"] = status_target(root, _desired_components(repo_root, harness, ("agents",)))
         if target == "opencode":
             config_root = (home / ".config/opencode") if profile.scope == "user" else project_root
             report["opencode:config"] = status_target(config_root, _opencode_config_component(config_root))
@@ -500,50 +502,56 @@ def _report(report: dict[str, tuple[ComponentStatus, ...]]) -> None:
             print(f"{location}\t{status.component}\t{status.state}\t{consumers}")
 
 
-def main() -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    repo_root: Path | None = None,
+    home: Path | None = None,
+    project_root: Path | None = None,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
-    parser.add_argument("--home", type=Path, default=Path.home())
-    parser.add_argument("--project-root", type=Path, default=Path.cwd())
-    parser.add_argument("--profile", default="default")
-    parser.add_argument("--yes", action="store_true", help="Use a saved profile without prompts")
-    parser.add_argument("--targets", help="Comma-separated harness ids for a noninteractive profile")
-    parser.add_argument("--scope", choices=("user", "project"))
-    parser.add_argument("--components", help="Comma-separated skills,agents")
-    parser.add_argument("--with-data", action="store_true")
+    # Public argparse policy is intentionally strict: expose only switches a
+    # user plausibly changes between runs. See docs/FORK_CONTRACT.md.
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--status", action="store_true")
-    parser.add_argument("--update", action="store_true")
-    parser.add_argument("--uninstall", action="store_true")
-    parser.add_argument("--prune", action="store_true")
-    args = parser.parse_args()
-    home = args.home.resolve()
-    if args.yes:
-        profile = load_profile(home, args.profile)
-        if profile is None:
-            if not (args.targets and args.scope and args.components):
-                parser.error("--yes needs a saved profile or --targets, --scope, and --components")
-            profile = InstallProfile(tuple(args.targets.split(",")), args.scope, tuple(args.components.split(",")), args.with_data, "force" if args.force else "ask")
-        if args.with_data:
-            profile = InstallProfile(profile.targets, profile.scope, profile.components, True, profile.overwrite)
-    else:
-        profile = interview(home)
-        save_profile(home, profile, args.profile)
+    operation = parser.add_mutually_exclusive_group()
+    operation.add_argument("--status", action="store_true")
+    operation.add_argument("--uninstall", action="store_true")
+    args = parser.parse_args(argv)
+    if args.dry_run and (args.status or args.uninstall):
+        parser.error("--dry-run is only valid when installing")
+
+    resolved_home = (home or Path.home()).resolve()
+    resolved_repo = (repo_root or REPO_ROOT).resolve()
+    resolved_project = (project_root or Path.cwd()).resolve()
+    profile = load_profile(resolved_home)
+    # A saved profile makes an install an update automatically. Clean orphaned
+    # managed files are pruned; modified files remain protected without --force.
+    updating = profile is not None
+    if profile is None:
+        if args.status or args.uninstall:
+            parser.error("no saved install profile")
+        profile = interview(resolved_home)
+        save_profile(resolved_home, profile)
+    elif not (args.status or args.uninstall):
+        print("Saved install profile found; installing repository updates.")
+
     if args.status:
-        _report(status(profile, repo_root=args.repo_root.resolve(), home=home, project_root=args.project_root.resolve()))
+        _report(status(profile, repo_root=resolved_repo, home=resolved_home, project_root=resolved_project))
         return 0
     if args.uninstall:
-        uninstall(profile, home=home, project_root=args.project_root.resolve(), force=args.force)
+        uninstall(profile, home=resolved_home, project_root=resolved_project, force=args.force)
         return 0
-    if args.update and not args.yes and not args.force:
-        modified = [
-            item.component for items in status(profile, repo_root=args.repo_root.resolve(), home=home, project_root=args.project_root.resolve()).values()
-            for item in items if item.state == "modified"
-        ]
-        if modified:
-            args.force = _choice("Replace locally modified managed content (yes/no)", ("yes", "no"), "no") == "yes"
-    report = install(profile, repo_root=args.repo_root.resolve(), home=home, project_root=args.project_root.resolve(), force=args.force, dry_run=args.dry_run, update=args.update, prune=args.prune)
+    report = install(
+        profile,
+        repo_root=resolved_repo,
+        home=resolved_home,
+        project_root=resolved_project,
+        force=args.force,
+        dry_run=args.dry_run,
+        update=updating,
+        prune=updating,
+    )
     _report(report)
     return 0
 
