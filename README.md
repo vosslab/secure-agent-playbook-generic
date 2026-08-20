@@ -79,6 +79,21 @@ Reference plays directly as procedures for any AI agent or manual use:
 - Point your agent at a play: *"Follow the procedure in `plugins/ai-security-skills/plays/agent-security-audit.md`"*
 - Or use the plays as checklists for manual security reviews
 
+**Codex, OpenCode, and standalone installs:** The installer builds Codex plugin
+manifests and complete target-owned packages from canonical plugins. For a
+guided standalone install to Codex or the OpenCode compatibility surface, run
+`python3 tools/install_skills.py`. The installer saves its first-run choices
+and replays them with `--yes`. Use `--with-data` to materialize cited plugin
+datasets; `--status`, `--update`, and `--uninstall` manage a saved install.
+
+<!-- harness-support:start -->
+| Harness | Support | User skills | Project skills | Agents |
+| --- | --- | --- | --- | --- |
+| Claude Code | Primary | `~/.claude/skills` | `.claude/skills` | `Marketplace` |
+| Codex CLI | Primary | `~/.agents/skills` | `.agents/skills` | `.codex/agents` |
+| OpenCode (compatibility) | Best-effort compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.config/opencode/agent` |
+<!-- harness-support:end -->
+
 ## Skills Catalog
 
 ### Code & Infrastructure Security (`code-security-skills`)
