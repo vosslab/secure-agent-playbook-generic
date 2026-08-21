@@ -37,8 +37,9 @@ copies of the OWASP-grounded skills and plays.
 - **Harness-native delivery** — Claude Code and Codex are primary targets;
   OpenCode is an explicit best-effort compatibility surface.
 - **Fresh and explicit** — Every run asks where to install, treats the checkout
-  as authoritative, and writes only the selected skills or agents—no saved
-  profile, hidden manifest, or harness configuration.
+  as authoritative, and writes only the selected harness bundle—skills,
+  agents, and required resources—with no saved profile, hidden manifest, or
+  harness configuration.
 - **Actionable security output** — The 17 skills and 6 agents produce findings
   with severity, CWE, evidence, remediation, and OWASP/OpenCRE traceability.
 - **Upstream-shaped content** — The fork changes distribution behavior while

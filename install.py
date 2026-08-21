@@ -8,7 +8,7 @@ from typing import Any, Iterable, Sequence
 
 from install_lib.convert_agents import agent_filename, to_codex_toml, to_opencode_md
 from install_lib.plugin_metadata import discover_repository
-from install_lib.resource_resolver import installed_files
+from install_lib.resource_resolver import dataset_file_count, installed_bundle
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -25,6 +25,11 @@ DESTINATIONS = {
         "user": (Path(".config/opencode/skills"), Path(".config/opencode/agents")),
         "project": (Path(".opencode/skills"), Path(".opencode/agents")),
     },
+}
+RESOURCE_DIRS = {
+    "claude": PurePosixPath("secure-agent-playbook-resources"),
+    "codex": PurePosixPath("resources"),
+    "opencode": PurePosixPath("secure-agent-playbook-resources"),
 }
 
 
@@ -87,16 +92,16 @@ def _agent_content(agent: Any, target: str) -> tuple[PurePosixPath, bytes]:
     return _agent_path(agent, target), to_opencode_md(agent).encode("utf-8")
 
 
-def _desired_skills(skills: Iterable[Any]) -> tuple[dict[PurePosixPath, bytes], ...]:
-    desired: list[dict[PurePosixPath, bytes]] = []
-    for skill in skills:
-        # A usable skill is the entrypoint plus its complete local closure,
-        # including every cited dataset. There is deliberately no thin mode.
-        files = installed_files(skill)
-        desired.append({
-            PurePosixPath(skill.name) / relative: content for relative, content in files.items()
-        })
-    return tuple(desired)
+def _desired_skills(
+    skills: Iterable[Any],
+    target: str,
+) -> tuple[dict[PurePosixPath, bytes], int]:
+    selected = tuple(skills)
+    resource_dir = RESOURCE_DIRS[target]
+    # A usable installation always includes one shared copy of all plays,
+    # templates, and datasets. There is deliberately no thin mode.
+    files = installed_bundle(selected, resource_dir)
+    return files, dataset_file_count(files, resource_dir)
 
 
 def _desired_agents(agents: Iterable[Any], target: str) -> tuple[dict[PurePosixPath, bytes], ...]:
@@ -135,6 +140,17 @@ def _write_component(root: Path, files: dict[PurePosixPath, bytes]) -> None:
         target.write_bytes(content)
 
 
+def _link_resources(root: Path, skills: Iterable[Any], resource_dir: PurePosixPath) -> None:
+    """Link each skill to the single shared support tree."""
+    for skill in skills:
+        for directory_name in ("plays", "templates", "data"):
+            link = root / skill.name / directory_name
+            _remove_path(link)
+            # ASVS 5.3.2: link paths are fixed names under a canonical skill.
+            target = Path("..") / resource_dir.as_posix() / directory_name
+            link.symlink_to(target, target_is_directory=True)
+
+
 def install(
     targets: tuple[str, ...],
     scope: str,
@@ -144,14 +160,16 @@ def install(
     project_root: Path,
 ) -> None:
     found = discover_repository(repo_root)
-    skills = _desired_skills(found.skills)
     for target in targets:
         skill_root = _destination(target, scope, "skills", home=home, project_root=project_root)
-        for files in skills:
-            _write_component(skill_root, files)
-        print(f"{target}:skills: installed {len(skills)} to {skill_root}")
-        data_count = sum("references/data" in path.as_posix() for files in skills for path in files)
-        print(f"{target}: cited dataset resource files: {data_count}")
+        skills, data_count = _desired_skills(found.skills, target)
+        resource_dir = RESOURCE_DIRS[target]
+        _write_component(skill_root, skills)
+        _link_resources(skill_root, found.skills, resource_dir)
+        resource_count = sum(path.is_relative_to(resource_dir) for path in skills)
+        print(f"{target}:skills: installed {len(found.skills)} to {skill_root}")
+        print(f"{target}:resources: installed {resource_count} files to {skill_root / resource_dir}")
+        print(f"{target}: dataset resource files: {data_count}")
 
         agent_root = _destination(target, scope, "agents", home=home, project_root=project_root)
         agents = _desired_agents(found.agents, target)
@@ -171,7 +189,7 @@ def install(
 
 
 def uninstall(*, repo_root: Path, home: Path, project_root: Path) -> None:
-    """Remove known skills and agents wherever their key files are installed."""
+    """Remove known skills, resources, and agents from supported roots."""
     removed: set[Path] = set()
     found = discover_repository(repo_root)
     # ASVS 2.3.1: derive every removal from a canonical key file and known root.
@@ -188,6 +206,15 @@ def uninstall(*, repo_root: Path, home: Path, project_root: Path) -> None:
             if skill_count:
                 print(f"{target}:skills: removed {skill_count} from {skill_root}")
 
+            resource_root = skill_root / RESOURCE_DIRS[target]
+            if resource_root.is_dir() and not resource_root.is_symlink() and resource_root not in removed:
+                _remove_path(resource_root)
+                removed.add(resource_root)
+                print(f"{target}:resources: removed from {resource_root}")
+
+            if target == "codex" and skill_root.is_dir() and not any(skill_root.iterdir()):
+                skill_root.rmdir()
+
             agent_root = _destination(target, scope, "agents", home=home, project_root=project_root)
             agent_count = 0
             for agent in found.agents:
@@ -203,7 +230,7 @@ def uninstall(*, repo_root: Path, home: Path, project_root: Path) -> None:
                         agent_count += 1
             if agent_count:
                 print(f"{target}:agents: removed {agent_count} from {agent_root}")
-    print(f"Uninstalled {len(removed)} skill and agent paths.")
+    print(f"Uninstalled {len(removed)} skill, resource, and agent paths.")
 
 
 def main(

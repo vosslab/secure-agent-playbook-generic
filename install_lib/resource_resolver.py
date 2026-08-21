@@ -1,23 +1,21 @@
-"""Copy and rewrite every local resource cited by an installed skill."""
+"""Build one shared plays, templates, and data tree for all skills."""
 
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
+import posixpath
 import re
 from typing import Iterable
 
-from install_lib.plugin_metadata import Plugin, Skill
+from install_lib.plugin_metadata import Skill
 
 
 RESOURCE = re.compile(r"(?<![\w:/.-])(?P<path>(?:(?:\.\.?/)+)?(?:plays|templates|data)(?:/[A-Za-z0-9_.*{}\[\],<>#-]+)*)")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)\s]+)(?:\s+[^)]*)?\)")
-DYNAMIC = re.compile(r"[<>{}\[\]*#]")
+DYNAMIC = re.compile(r"[<>{}\[\]*#]|XXX")
+RESOURCE_DIRECTORIES = ("plays", "templates", "data")
 
 
-def _repo_root(plugin: Plugin) -> Path:
-    return plugin.path.parent.parent
-
-
-def _raw_references(text: str) -> tuple[str, ...]:
+def _references(text: str) -> tuple[str, ...]:
     values: set[str] = set()
     for match in CODE_SPAN.finditer(text):
         values.update(found.group("path") for found in RESOURCE.finditer(match.group(1)))
@@ -26,120 +24,72 @@ def _raw_references(text: str) -> tuple[str, ...]:
     return tuple(sorted(values, key=lambda value: (-len(value), value)))
 
 
-def _dynamic_root(raw: str, source: Path, plugin: Plugin) -> Path | None:
-    prefix = DYNAMIC.split(raw, maxsplit=1)[0].rstrip("/")
-    base = source.parent if raw.startswith(".") else plugin.path
-    candidate = (base / prefix).resolve()
-    while not candidate.exists() and candidate != plugin.path:
-        candidate = candidate.parent
-    return candidate if candidate.exists() and candidate != plugin.path else None
+def _add(files: dict[PurePosixPath, bytes], destination: PurePosixPath, content: bytes) -> None:
+    existing = files.get(destination)
+    if existing is not None and existing != content:
+        raise ValueError(f"Conflicting shared resource {destination}")
+    files[destination] = content
 
 
-def _resolve(raw: str, source: Path, plugin: Plugin) -> Path:
-    base = source.parent if raw.startswith(".") else plugin.path
-    candidate = (base / raw).resolve()
-    if candidate.exists():
-        return candidate
-
-    if not raw.startswith(".") and raw.startswith("data/"):
-        candidate = (_repo_root(plugin) / raw).resolve()
-        if candidate.exists():
-            return candidate
-        if DYNAMIC.search(raw) or "XXX" in raw:
-            prefix = (DYNAMIC.split(raw, maxsplit=1)[0] if DYNAMIC.search(raw) else raw.split("XXX", 1)[0]).rstrip("/")
-            candidate = (_repo_root(plugin) / prefix).resolve()
-            while not candidate.exists() and candidate != _repo_root(plugin):
-                candidate = candidate.parent
-            if candidate.is_dir():
-                return candidate
-
-    parts = PurePosixPath(raw).parts
-    if "templates" in parts:
-        candidate = plugin.path.joinpath("templates", *parts[parts.index("templates") + 1 :])
-        if candidate.exists():
-            return candidate
-
-    if DYNAMIC.search(raw):
-        candidate = _dynamic_root(raw, source, plugin)
-        roots = (plugin.path.resolve(), (_repo_root(plugin) / "data").resolve())
-        if candidate is not None and any(candidate.is_relative_to(root) for root in roots if root.exists()):
-            return candidate
-
-    raise ValueError(f"{source}: unresolved local resource {raw!r}")
+def _rewrite(source_name: str, text: str) -> str:
+    if source_name == "SKILL.md":
+        return text.replace("../../plays/", "plays/").replace("../../templates/", "templates/")
+    if source_name.startswith("plays/"):
+        return text.replace("../../templates/", "../templates/")
+    return text
 
 
-def _references(source: Path, plugin: Plugin) -> tuple[tuple[str, Path], ...]:
-    text = source.read_text(encoding="utf-8")
-    return tuple((raw, _resolve(raw, source, plugin)) for raw in _raw_references(text))
-
-
-def _is_dataset(path: Path, plugin: Plugin) -> bool:
-    return path.is_relative_to(plugin.path / "data") or path.is_relative_to(_repo_root(plugin) / "data")
-
-
-def _files(path: Path) -> Iterable[Path]:
-    if path.is_file():
-        yield path
-    elif path.is_dir():
-        yield from (candidate for candidate in sorted(path.rglob("*")) if candidate.is_file())
-
-
-def _destination(path: Path, plugin: Plugin) -> PurePosixPath:
-    path = path.resolve()
-    plugin_root = plugin.path.resolve()
-    repo_data = (_repo_root(plugin) / "data").resolve()
-    if path.is_relative_to(plugin_root):
-        return PurePosixPath("references") / PurePosixPath(path.relative_to(plugin_root).as_posix())
-    if path.is_relative_to(repo_data):
-        return PurePosixPath("references/data") / PurePosixPath(path.relative_to(repo_data).as_posix())
-    raise ValueError(f"Resource {path} is outside the plugin and repository data trees")
-
-
-def _support_paths(skill: Skill) -> tuple[Path, ...]:
-    pending = [skill.path]
-    seen: set[Path] = set()
-    support: set[Path] = set()
-    while pending:
-        document = pending.pop()
-        if document in seen:
+def _validate(files: dict[PurePosixPath, bytes], resource_dir: PurePosixPath) -> None:
+    directories = {parent for path in files for parent in path.parents}
+    for source, content in files.items():
+        if source.suffix != ".md":
             continue
-        seen.add(document)
-        for _, resolved in _references(document, skill.plugin):
-            support.add(resolved)
-            if resolved.is_file() and resolved.suffix == ".md" and not _is_dataset(resolved, skill.plugin):
-                pending.append(resolved)
-            elif resolved.is_dir() and not _is_dataset(resolved, skill.plugin):
-                pending.extend(resolved.rglob("*.md"))
-    return tuple(sorted(support))
+        for raw in _references(content.decode("utf-8")):
+            if raw.startswith("."):
+                candidate = PurePosixPath(posixpath.normpath((source.parent / raw).as_posix()))
+            else:
+                candidate = resource_dir / raw.rstrip("/")
+            dynamic_part = next((part for part in candidate.parts if DYNAMIC.search(part)), None)
+            if dynamic_part is not None:
+                candidate = PurePosixPath(*candidate.parts[:candidate.parts.index(dynamic_part)])
+            if candidate not in files and candidate not in directories:
+                raise ValueError(f"Installed {source} references absent resource {raw}")
 
 
-def installed_files(skill: Skill) -> dict[PurePosixPath, bytes]:
-    """Return the complete standalone skill, including cited datasets."""
-    support = _support_paths(skill)
-    documents = [skill.path, *(path for path in support if path.is_file() and not _is_dataset(path, skill.plugin))]
+def installed_bundle(skills: Iterable[Skill], resource_dir: PurePosixPath) -> dict[PurePosixPath, bytes]:
+    """Return every skill and one shared copy of its supporting resources."""
+    selected = tuple(skills)
     files: dict[PurePosixPath, bytes] = {}
+    for skill in selected:
+        text = _rewrite("SKILL.md", skill.path.read_text(encoding="utf-8"))
+        files[PurePosixPath(skill.name) / "SKILL.md"] = text.encode("utf-8")
 
-    for source in documents:
-        text = source.read_text(encoding="utf-8")
-        for raw, resolved in _references(source, skill.plugin):
-            replacement = _destination(resolved, skill.plugin).as_posix()
-            text = text.replace(raw, replacement if resolved.is_file() else replacement + "/")
-        destination = PurePosixPath("SKILL.md") if source == skill.path else _destination(source, skill.plugin)
-        files[destination] = text.encode("utf-8")
-
-    for source in support:
-        for file_path in _files(source):
-            destination = _destination(file_path, skill.plugin)
-            if destination not in files:
-                files[destination] = file_path.read_bytes()
-
-    for destination, content in files.items():
-        if destination.suffix != ".md":
-            continue
-        for raw in _raw_references(content.decode("utf-8")):
-            if not raw.startswith("references/"):
+    plugins = {skill.plugin.path.resolve(): skill.plugin for skill in selected}.values()
+    for plugin in plugins:
+        for directory_name in RESOURCE_DIRECTORIES:
+            directory = plugin.path / directory_name
+            if not directory.is_dir():
                 continue
-            candidate = PurePosixPath(raw.rstrip("/"))
-            if candidate not in files and not any(path.is_relative_to(candidate) for path in files):
-                raise ValueError(f"Installed {destination} references absent resource {raw}")
+            for source in sorted(path for path in directory.rglob("*") if path.is_file()):
+                relative = PurePosixPath(source.relative_to(directory).as_posix())
+                destination = resource_dir / directory_name / relative
+                content = source.read_bytes()
+                if source.suffix == ".md":
+                    name = f"{directory_name}/{relative.as_posix()}"
+                    content = _rewrite(name, content.decode("utf-8")).encode("utf-8")
+                # ASVS 5.3.2: destinations use fixed directory names and
+                # canonical source-relative paths, never user-provided paths.
+                _add(files, destination, content)
+
+    repo_data = next(iter(plugins)).path.resolve().parent.parent / "data"
+    for source in sorted(path for path in repo_data.rglob("*") if path.is_file()):
+        relative = PurePosixPath(source.relative_to(repo_data).as_posix())
+        _add(files, resource_dir / "data" / relative, source.read_bytes())
+
+    _validate(files, resource_dir)
     return files
+
+
+def dataset_file_count(files: Iterable[PurePosixPath], resource_dir: PurePosixPath) -> int:
+    """Count unique files under the shared data directory."""
+    return sum(path.is_relative_to(resource_dir / "data") for path in files)

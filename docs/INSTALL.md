@@ -32,16 +32,17 @@ The same interview runs every time. Nothing is saved between invocations:
 ```
 
 A no-argument run treats the checkout as authoritative and replaces the
-selected skill and agent paths. `--uninstall` needs no interview; it finds
-known skills by `SKILL.md` and known agent filenames across the
-supported destinations. It reports every destination it removed files from,
-then prints the total number of removed skill and agent paths.
+selected skill, resource, and agent paths. `--uninstall` needs no interview;
+it finds known skills by `SKILL.md`, the uniquely named resource tree, and
+known agent filenames across the supported destinations. It reports every
+destination it removed files from, then prints the total number of removed
+skill, resource, and agent paths.
 
-Install likewise prints every destination it writes. Codex skills are grouped
-under its own `secure-agent-playbook/` subdirectory; Claude skills remain flat.
+Install likewise prints every destination it writes. All Codex skills live in
+one `secure-agent-playbook/` group; Claude skills remain flat.
 
-The installer writes only skills and agents. It creates no saved profile,
-ownership manifest, package copy, or harness configuration.
+The installer writes only skills, agents, and their required shared resources.
+It creates no saved profile, ownership manifest, or harness configuration.
 
 Standalone skills use the following locations:
 
@@ -51,8 +52,12 @@ Standalone skills use the following locations:
 | Codex CLI | `~/.codex/skills/secure-agent-playbook` | `.codex/skills/secure-agent-playbook` | `.codex/agents/*.toml` |
 | OpenCode compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.opencode/agents/*.md` |
 
-Every standalone skill installation materializes the datasets it cites below
-its `references/data/` directory.
+Datasets are copied once per selected harness, not once per skill. For Codex,
+the shared tree is `secure-agent-playbook/resources/`. Each skill contains
+relative `plays`, `templates`, and `data` symlinks into that tree. Claude and
+OpenCode use the same links with a uniquely named shared resource directory
+beside their flat skill directories. Resource directories contain no
+`SKILL.md`, so harnesses do not discover them as skills.
 
 ## Verify install
 

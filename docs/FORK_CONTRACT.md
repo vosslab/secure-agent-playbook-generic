@@ -46,18 +46,17 @@ disabled by a missing destination entry. Claude agents are
 copied unchanged from their canonical Markdown; only non-Claude formats are
 converted.
 
-Codex skills live under the Codex-specific
-`.codex/skills/secure-agent-playbook/` group, while Claude skills remain flat
-because Claude does not support grouped skill directories. Converted agent
-filenames and internal names use the canonical short agent name without a
-plugin prefix.
+All Codex skills live directly under
+`.codex/skills/secure-agent-playbook/`, while Claude skills remain flat because
+Claude does not support grouped skill directories. Converted agent filenames
+and internal names use the canonical short agent name without a plugin prefix.
 
 The public CLI is deliberately limited to options users may need to change
 between runs:
 
 | Option | Purpose |
 | --- | --- |
-| `--uninstall` | Remove known installed skills and agents. |
+| `--uninstall` | Remove known installed skills, resources, and agents. |
 
 Before adding an argument, require evidence that users frequently need it.
 Topology belongs in the fresh interview. Internal paths belong in Python
@@ -68,31 +67,53 @@ In particular, do not add profile saving or dataset, dry-run, force, status,
 update, pruning, repository-root, home, project-root, target, scope, component,
 or confirmation flags.
 
-## Datasets are required
+## Required data and shared resources
 
-A skill is not complete without the local datasets it cites. Standalone
-materialization therefore computes the transitive local resource closure and
-always includes both plugin-local and cited repository-level data under the
-installed skill's `references/data/` tree.
+The datasets are runtime inputs to these skills, not optional examples or
+supplemental documentation. Skills consult the local ASVS, FIASSE, MASVS,
+MASTG, AISVS, LLM Top 10, OpenCRE, and secure-code reference files to select
+controls, follow review procedures, and produce traceable findings. Installing
+a `SKILL.md` without the data it names leaves the skill incomplete and can
+cause omitted controls, unsupported conclusions, or invented substitutes.
+
+The settled design is one self-contained resource copy per selected harness,
+not one copy per skill and not links back to the Git checkout:
+
+- merge plugin-local and repository-level content into one shared `plays/`,
+  `templates/`, and `data/` tree;
+- place the Codex tree at
+  `.codex/skills/secure-agent-playbook/resources/`;
+- place a uniquely named resource tree beside the flat Claude and OpenCode
+  skill directories;
+- add relative `plays`, `templates`, and `data` symlinks inside every skill so
+  canonical logical paths keep working at user and project scope;
+- reject conflicting files during the merge instead of silently choosing one.
+
+This keeps one installed source of truth while allowing every skill to read
+the required files through its own directory. Moving or deleting the checkout
+after installation does not break the installed skills.
 
 This is an invariant, not a default:
 
 - there is no `--with-data` or inverse option;
 - there is no saved installer state;
 - resolver APIs have no reduced or thin materialization mode;
-- installed Markdown must resolve its rewritten local references inside the
-  materialized skill tree.
+- installed Markdown references and skill resource links must resolve inside
+  the selected harness installation;
+- shared resource directories contain no `SKILL.md` and must not appear as
+  discoverable skills.
 
 ## Clean installation
 
 The Git checkout is authoritative and installed copies are disposable. Each
-install replaces the selected known skill directories and agent
-files directly. It does not write profiles, receipts, ownership manifests,
-package copies, harness configuration, or any other hidden state.
+install replaces the selected known skill directories, shared resource tree,
+and agent files directly. It does not write profiles, receipts, ownership
+manifests, harness configuration, or any other hidden state.
 
 Unrelated destination entries are untouched, including symbolic links outside
-the selected skill or agent names. Uninstall removes only canonical skill
-directories containing `SKILL.md` and canonical agent filenames.
+the selected skill or agent names. Uninstall removes canonical skill
+directories containing `SKILL.md`, the uniquely named shared resource tree,
+and canonical agent filenames.
 
 ## Adding another harness
 
@@ -121,8 +142,9 @@ At minimum, check:
 - `./install.py --help` exposes only `--uninstall`;
 - removed options, especially `--with-data`, are rejected;
 - every applicable run conducts a fresh interview and saves nothing;
-- every installed skill contains its cited datasets;
-- install writes only skills and agents, while uninstall finds their key files;
+- every installed skill resolves its cited datasets through the shared links;
+- install writes only skills, resources, and agents, while uninstall finds
+  their known paths;
 - Python compilation, static checks, and `git diff --check` remain clean.
 
 When this contract changes intentionally, update this document and the affected
