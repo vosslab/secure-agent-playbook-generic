@@ -37,6 +37,9 @@ known skills by `SKILL.md` and known agent filenames across the
 supported destinations. It reports every destination it removed files from,
 then prints the total number of removed skill and agent paths.
 
+Install likewise prints every destination it writes. Codex skills are grouped
+under its own `secure-agent-playbook/` subdirectory; Claude skills remain flat.
+
 The installer writes only skills and agents. It creates no saved profile,
 ownership manifest, package copy, or harness configuration.
 
@@ -45,7 +48,7 @@ Standalone skills use the following locations:
 | Harness | User skills | Project skills | Agents |
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/skills` | `.claude/skills` | `.claude/agents/*.md` |
-| Codex CLI | `~/.agents/skills` | `.agents/skills` | `.codex/agents/*.toml` |
+| Codex CLI | `~/.codex/skills/secure-agent-playbook` | `.codex/skills/secure-agent-playbook` | `.codex/agents/*.toml` |
 | OpenCode compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.opencode/agents/*.md` |
 
 Every standalone skill installation materializes the datasets it cites below
@@ -57,4 +60,5 @@ its `references/data/` directory.
 ./install.py
 ```
 
-A successful run ends with a short installed count for each selected location.
+A successful run ends with an installed count and exact path for each selected
+location. Restart Codex if newly installed skills are not visible immediately.

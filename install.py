@@ -18,8 +18,8 @@ DESTINATIONS = {
         "project": (Path(".claude/skills"), Path(".claude/agents")),
     },
     "codex": {
-        "user": (Path(".agents/skills"), Path(".codex/agents")),
-        "project": (Path(".agents/skills"), Path(".codex/agents")),
+        "user": (Path(".codex/skills/secure-agent-playbook"), Path(".codex/agents")),
+        "project": (Path(".codex/skills/secure-agent-playbook"), Path(".codex/agents")),
     },
     "opencode": {
         "user": (Path(".config/opencode/skills"), Path(".config/opencode/agents")),
@@ -32,7 +32,7 @@ def detect_harnesses(home: Path) -> dict[str, bool]:
     """Report local harness configuration roots; absence remains installable."""
     return {
         "claude": (home / ".claude").exists(),
-        "codex": (home / ".codex").exists() or (home / ".agents").exists(),
+        "codex": (home / ".codex").exists(),
         "opencode": (home / ".config/opencode").exists(),
     }
 
@@ -67,6 +67,14 @@ def _agent_path(agent: Any, target: str) -> PurePosixPath:
         return PurePosixPath(agent.path.name)
     suffix = ".toml" if target == "codex" else ".md"
     return PurePosixPath(agent_filename(agent, suffix))
+
+
+def _old_agent_path(agent: Any, target: str) -> PurePosixPath | None:
+    """Return the former plugin-prefixed name used by this fork."""
+    if target == "claude":
+        return None
+    suffix = ".toml" if target == "codex" else ".md"
+    return PurePosixPath(f"{agent.plugin.name}--{agent.name}{suffix}")
 
 
 def _agent_content(agent: Any, target: str) -> tuple[PurePosixPath, bytes]:
@@ -134,34 +142,41 @@ def install(
     repo_root: Path = REPO_ROOT,
     home: Path,
     project_root: Path,
-) -> dict[str, int]:
-    report: dict[str, int] = {}
+) -> None:
     found = discover_repository(repo_root)
     skills = _desired_skills(found.skills)
     for target in targets:
         skill_root = _destination(target, scope, "skills", home=home, project_root=project_root)
         for files in skills:
             _write_component(skill_root, files)
-        report[f"{target}:skills"] = len(skills)
+        print(f"{target}:skills: installed {len(skills)} to {skill_root}")
         data_count = sum("references/data" in path.as_posix() for files in skills for path in files)
         print(f"{target}: cited dataset resource files: {data_count}")
 
         agent_root = _destination(target, scope, "agents", home=home, project_root=project_root)
         agents = _desired_agents(found.agents, target)
+        old_count = 0
+        for agent in found.agents:
+            old_relative = _old_agent_path(agent, target)
+            if old_relative is not None and (agent_root / old_relative).is_file():
+                # ASVS 5.3.2: cleanup names come only from trusted repository
+                # metadata and are confined to the selected known agent root.
+                _remove_path(agent_root / old_relative)
+                old_count += 1
+        if old_count:
+            print(f"{target}:agents: removed {old_count} obsolete prefixed files from {agent_root}")
         for files in agents:
             _write_component(agent_root, files)
-        report[f"{target}:agents"] = len(agents)
-    return report
+        print(f"{target}:agents: installed {len(agents)} to {agent_root}")
 
 
 def uninstall(*, repo_root: Path, home: Path, project_root: Path) -> None:
     """Remove known skills and agents wherever their key files are installed."""
     removed: set[Path] = set()
-    scopes = ("user",) if project_root == repo_root else ("user", "project")
     found = discover_repository(repo_root)
     # ASVS 2.3.1: derive every removal from a canonical key file and known root.
     for target in DESTINATIONS:
-        for scope in scopes:
+        for scope in ("user", "project"):
             skill_root = _destination(target, scope, "skills", home=home, project_root=project_root)
             skill_count = 0
             for skill in found.skills:
@@ -176,19 +191,19 @@ def uninstall(*, repo_root: Path, home: Path, project_root: Path) -> None:
             agent_root = _destination(target, scope, "agents", home=home, project_root=project_root)
             agent_count = 0
             for agent in found.agents:
-                installed_path = agent_root / _agent_path(agent, target)
-                if installed_path.is_file() and installed_path not in removed:
-                    _remove_path(installed_path)
-                    removed.add(installed_path)
-                    agent_count += 1
+                relatives = [_agent_path(agent, target)]
+                old_relative = _old_agent_path(agent, target)
+                if old_relative is not None:
+                    relatives.append(old_relative)
+                for relative in relatives:
+                    installed_path = agent_root / relative
+                    if installed_path.is_file() and installed_path not in removed:
+                        _remove_path(installed_path)
+                        removed.add(installed_path)
+                        agent_count += 1
             if agent_count:
                 print(f"{target}:agents: removed {agent_count} from {agent_root}")
     print(f"Uninstalled {len(removed)} skill and agent paths.")
-
-
-def _report(report: dict[str, int]) -> None:
-    for location, count in report.items():
-        print(f"{location}: installed {count}")
 
 
 def main(
@@ -214,14 +229,13 @@ def main(
     # ASVS 2.3.1: collect this operation's topology in sequence immediately
     # before acting; no prior response is cached or silently replayed.
     targets, scope = interview(resolved_home)
-    report = install(
+    install(
         targets,
         scope,
         repo_root=resolved_repo,
         home=resolved_home,
         project_root=resolved_project,
     )
-    _report(report)
     return 0
 
 

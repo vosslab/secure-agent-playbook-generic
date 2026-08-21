@@ -46,6 +46,12 @@ disabled by a missing destination entry. Claude agents are
 copied unchanged from their canonical Markdown; only non-Claude formats are
 converted.
 
+Codex skills live under the Codex-specific
+`.codex/skills/secure-agent-playbook/` group, while Claude skills remain flat
+because Claude does not support grouped skill directories. Converted agent
+filenames and internal names use the canonical short agent name without a
+plugin prefix.
+
 The public CLI is deliberately limited to options users may need to change
 between runs:
 

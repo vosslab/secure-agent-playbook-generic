@@ -52,7 +52,7 @@ multi-agent security work using consistent methodology.
 | Harness | Support | User skills | Project skills | Agents |
 | --- | --- | --- | --- | --- |
 | Claude Code | Primary | `~/.claude/skills` | `.claude/skills` | `.claude/agents` |
-| Codex CLI | Primary | `~/.agents/skills` | `.agents/skills` | `.codex/agents` |
+| Codex CLI | Primary | `~/.codex/skills/secure-agent-playbook` | `.codex/skills/secure-agent-playbook` | `.codex/agents` |
 | OpenCode (compatibility) | Best-effort compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.config/opencode/agents` |
 
 ## Quick Start
@@ -69,8 +69,8 @@ python3 -m pip install -r scripts/requirements.txt
 ```
 
 Choose the target harnesses and scope when prompted. A successful
-install reports a short installed count for each selected location; then ask
-the selected harness for a real result:
+install reports a short installed count and exact path for each selected
+location; then ask the selected harness for a real result:
 
 ```text
 Review src/auth/ for security issues.

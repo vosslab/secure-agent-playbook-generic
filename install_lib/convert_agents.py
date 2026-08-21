@@ -6,13 +6,8 @@ import yaml
 from install_lib.plugin_metadata import Agent
 
 
-def namespaced_agent_name(agent: Agent) -> str:
-    """Keep independently installable plugin agents collision-resistant."""
-    return f"{agent.plugin.name}--{agent.name}"
-
-
 def agent_filename(agent: Agent, suffix: str = ".toml") -> str:
-    return f"{namespaced_agent_name(agent)}{suffix}"
+    return f"{agent.name}{suffix}"
 
 
 def _instructions(agent: Agent) -> str:
@@ -38,7 +33,7 @@ def _toml_multiline(value: str) -> str:
 def to_codex_toml(agent: Agent) -> str:
     """Emit a TOML agent with safe JSON-string quoting for every source value."""
     return (
-        f"name = {json.dumps(namespaced_agent_name(agent), ensure_ascii=False)}\n"
+        f"name = {json.dumps(agent.name, ensure_ascii=False)}\n"
         f"description = {json.dumps(agent.description, ensure_ascii=False)}\n"
         f"developer_instructions = {_toml_multiline(_instructions(agent))}\n"
         'sandbox_mode = "read-only"\n'
