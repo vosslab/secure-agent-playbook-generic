@@ -28,17 +28,17 @@ An installation-focused security playbook fork for developers and security revie
 ## One Corpus, Native to Each Harness
 
 One canonical security corpus is installed where each supported agent already
-looks. The fork adapts paths, manifests, and agent formats without maintaining
-divergent copies of the OWASP-grounded skills and plays.
+looks. The fork adapts paths and agent formats without maintaining divergent
+copies of the OWASP-grounded skills and plays.
 
 - **Complete by construction** — Every standalone skill includes its referenced
   play, templates, and all cited plugin or repository datasets. There is no
   reduced installation mode.
 - **Harness-native delivery** — Claude Code and Codex are primary targets;
   OpenCode is an explicit best-effort compatibility surface.
-- **Safe lifecycle management** — A saved profile makes reruns automatic,
-  manifest ownership limits what can change, and local modifications survive
-  unless `--force` is supplied for that run.
+- **Fresh and explicit** — Every run asks where to install, treats the checkout
+  as authoritative, and writes only the selected skills or agents—no saved
+  profile, hidden manifest, or harness configuration.
 - **Actionable security output** — The 17 skills and 6 agents produce findings
   with severity, CWE, evidence, remediation, and OWASP/OpenCRE traceability.
 - **Upstream-shaped content** — The fork changes distribution behavior while
@@ -49,17 +49,15 @@ This remains a playbook rather than a framework or library. Agents follow its
 procedures to perform code, dependency, infrastructure, mobile, LLM, MCP, and
 multi-agent security work using consistent methodology.
 
-<!-- harness-support:start -->
 | Harness | Support | User skills | Project skills | Agents |
 | --- | --- | --- | --- | --- |
-| Claude Code | Primary | `~/.claude/skills` | `.claude/skills` | `Marketplace` |
+| Claude Code | Primary | `~/.claude/skills` | `.claude/skills` | `.claude/agents` |
 | Codex CLI | Primary | `~/.agents/skills` | `.agents/skills` | `.codex/agents` |
-| OpenCode (compatibility) | Best-effort compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.config/opencode/agent` |
-<!-- harness-support:end -->
+| OpenCode (compatibility) | Best-effort compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.config/opencode/agents` |
 
 ## Quick Start
 
-The generic installer requires a local checkout, Python 3.10 or newer, and
+The generic installer requires a local checkout, Python 3.12, and
 PyYAML 6 or newer. Install the declared Python dependency, then run the single
 public entrypoint:
 
@@ -70,26 +68,24 @@ python3 -m pip install -r scripts/requirements.txt
 ./install.py
 ```
 
-Choose the target harnesses, scope, and components when prompted. A successful
-install reports the managed components as `current`; then ask the selected
-harness for a real result:
+Choose the target harnesses and scope when prompted. A successful
+install reports a short installed count for each selected location; then ask
+the selected harness for a real result:
 
 ```text
 Review src/auth/ for security issues.
 ```
 
-See [Installation](docs/INSTALL.md) for destinations, updates, status,
+See [Installation](docs/INSTALL.md) for destinations, reinstalling,
 uninstalling, Claude marketplace alternatives, and organization deployment.
 Without installing, any agent can follow a play directly from `plugins/*/plays/`.
 
 ## Documentation
 
 - [`docs/INSTALL.md`](docs/INSTALL.md) — installer prompts, destinations, and
-  lifecycle operations.
+  uninstall behavior.
 - [`docs/FORK_CONTRACT.md`](docs/FORK_CONTRACT.md) — compatibility boundaries,
   minimalist CLI policy, mandatory datasets, and upstream-sync rules.
-- [`docs/SKILLS_INDEX.md`](docs/SKILLS_INDEX.md) — generated index of every
-  discovered skill and its activation guidance.
 - [`examples/README.md`](examples/README.md) — representative reports and
   deliberately vulnerable review fixtures.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — upstream-shaped play, skill, agent, and
@@ -254,7 +250,7 @@ All plays reference OWASP standards and datasets:
 
 | Project | Relationship |
 |---------|-------------|
-| [OWASP Secure Agent Playbook](https://github.com/OWASP/secure-agent-playbook) | Canonical upstream for the security corpus. This fork adds generic harness installation and lifecycle behavior while keeping upstream content recognizable. |
+| [OWASP Secure Agent Playbook](https://github.com/OWASP/secure-agent-playbook) | Canonical upstream for the security corpus. This fork adds generic harness installation while keeping upstream content recognizable. |
 | [OWASP Agent Skills Project](https://github.com/eoftedal/owasp-agent-skills-project) | Proactive ASVS 5.0 guidance for AI coding agents — helps agents **write** secure code. We use their ASVS reference data in `plugins/code-security-skills/data/asvs/`. Complementary: they guide code generation, we find vulnerabilities in existing code. |
 | [Securability Engineering](https://github.com/Securability-Engineering) | Securable code generation (OWASP FIASSE) and secure code requirements (ASVS) via spec file analysis and generation constraint (benchmarked and tuned) for various AI code generation tools. |
 | [Arcanum PI Taxonomy](https://github.com/Arcanum-Sec/arc_pi_taxonomy) | Prompt injection attack classification by Jason Haddix. Our `prompt-injection-testing` play is built on this taxonomy. CC BY 4.0. |

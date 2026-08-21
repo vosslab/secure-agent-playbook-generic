@@ -1,23 +1,21 @@
 """Render canonical Claude agents for Codex and OpenCode surfaces."""
 
-from __future__ import annotations
-
 import json
 import yaml
 
-from plugin_metadata import AgentRecord
+from install_lib.plugin_metadata import Agent
 
 
-def namespaced_agent_name(agent: AgentRecord) -> str:
+def namespaced_agent_name(agent: Agent) -> str:
     """Keep independently installable plugin agents collision-resistant."""
     return f"{agent.plugin.name}--{agent.name}"
 
 
-def agent_filename(agent: AgentRecord, suffix: str = ".toml") -> str:
+def agent_filename(agent: Agent, suffix: str = ".toml") -> str:
     return f"{namespaced_agent_name(agent)}{suffix}"
 
 
-def _instructions(agent: AgentRecord) -> str:
+def _instructions(agent: Agent) -> str:
     skills = agent.frontmatter.get("skills", "")
     if isinstance(skills, str):
         skill_names = [item.strip() for item in skills.split(",") if item.strip()]
@@ -37,7 +35,7 @@ def _toml_multiline(value: str) -> str:
     return f'"""\\\n{escaped}"""'
 
 
-def to_codex_toml(agent: AgentRecord) -> str:
+def to_codex_toml(agent: Agent) -> str:
     """Emit a TOML agent with safe JSON-string quoting for every source value."""
     return (
         f"name = {json.dumps(namespaced_agent_name(agent), ensure_ascii=False)}\n"
@@ -47,7 +45,7 @@ def to_codex_toml(agent: AgentRecord) -> str:
     )
 
 
-def _opencode_permissions(agent: AgentRecord) -> dict[str, str]:
+def _opencode_permissions(agent: Agent) -> dict[str, str]:
     tools = agent.frontmatter.get("tools", "")
     source = tools if isinstance(tools, list) else str(tools).split(",")
     mapped = {"read": "read", "grep": "grep", "glob": "glob", "bash": "bash", "webfetch": "webfetch", "agent": "agent"}
@@ -59,10 +57,9 @@ def _opencode_permissions(agent: AgentRecord) -> dict[str, str]:
     return permissions
 
 
-def to_opencode_md(agent: AgentRecord) -> str:
+def to_opencode_md(agent: Agent) -> str:
     """Emit an OpenCode subagent that preserves its authorized tool vocabulary."""
     frontmatter = {
-        "generated_by": "tools/build_plugin_manifest.py",
         "description": agent.description,
         "mode": "subagent",
         "permission": _opencode_permissions(agent),

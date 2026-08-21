@@ -5,6 +5,8 @@ best-effort compatibility installation through the same installer.
 The installer design and maintenance invariants are specified in the
 [Fork Contract](FORK_CONTRACT.md).
 
+Requires Python 3.12 and PyYAML 6 or newer.
+
 ## Claude marketplace
 
 ```text
@@ -15,40 +17,44 @@ The installer design and maintenance invariants are specified in the
 
 ## Installer
 
-Run once to choose targets, scope, and skills/agents:
+Run the fresh interview to choose targets and user or project scope. Every
+selected harness receives the complete skills-and-agents bundle:
 
 ```sh
 ./install.py
 ```
 
-The saved profile at `~/.config/agent-security-playbook/profile.json` makes a
-bare rerun install repository updates without repeating the interview:
+The same interview runs every time. Nothing is saved between invocations:
 
 ```sh
 ./install.py
-./install.py --status
-./install.py --dry-run
 ./install.py --uninstall
 ```
 
-A no-argument rerun installs repository updates, removes obsolete unmodified
-managed files, and preserves locally modified managed files. Pass `--force`
-only when those local changes should be replaced deliberately.
+A no-argument run treats the checkout as authoritative and replaces the
+selected skill and agent paths. `--uninstall` needs no interview; it finds
+known skills by `SKILL.md` and known agent filenames across the
+supported destinations. It reports every destination it removed files from,
+then prints the total number of removed skill and agent paths.
 
-For Codex, the installer first creates a complete package in its target-owned
-package directory, copies each canonical plugin, generates
-`.codex-plugin/plugin.json` there, and writes a local `marketplace.json`.
-Import that package through the Codex Plugins interface. The repository stays
-free of harness-specific package output.
+The installer writes only skills and agents. It creates no saved profile,
+ownership manifest, package copy, or harness configuration.
 
 Standalone skills use the following locations:
 
 | Harness | User skills | Project skills | Agents |
 | --- | --- | --- | --- |
-| Claude Code | `~/.claude/skills` | `.claude/skills` | Marketplace agents |
+| Claude Code | `~/.claude/skills` | `.claude/skills` | `.claude/agents/*.md` |
 | Codex CLI | `~/.agents/skills` | `.agents/skills` | `.codex/agents/*.toml` |
-| OpenCode compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.opencode/agent/*.md` |
+| OpenCode compatibility | `~/.config/opencode/skills` | `.opencode/skills` | `.opencode/agents/*.md` |
 
 Every standalone skill installation materializes the datasets it cites below
-its `references/data/` directory. The installer protects locally modified
-managed files and uses `--force` for deliberate replacement.
+its `references/data/` directory.
+
+## Verify install
+
+```sh
+./install.py
+```
+
+A successful run ends with a short installed count for each selected location.
